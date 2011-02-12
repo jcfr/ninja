@@ -9,7 +9,10 @@ OPTION(BUILD_TESTING "Enable testing" ON)
 SET(ADDITIONAL_C_FLAGS "" CACHE STRING "Additional C Flags")
 SET(ADDITIONAL_CXX_FLAGS "" CACHE STRING "Additional CXX Flags")
 
-SET(cflags "-Wno-deprecated")
+SET(cflags)
+IF(CMAKE_COMPILER_IS_GNUCXX)
+  SET(cflags "-Wno-deprecated")
+ENDIF()
 
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS_INIT} ${cflags} ${ADDITIONAL_C_FLAGS}")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_INIT} ${cflags} ${ADDITIONAL_CXX_FLAGS}")
