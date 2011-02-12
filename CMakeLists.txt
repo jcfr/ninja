@@ -31,6 +31,13 @@ SET(ninja_lib_sources
   src/util.cc
   src/ninja_jumble.cc
   )
+IF(MSVC)
+  INCLUDE_DIRECTORIES(src/win)
+  LIST(APPEND ninja_lib_sources
+    src/win/getopt.c
+    )
+ENDIF()
+
 ADD_LIBRARY(ninjaLib STATIC ${ninja_lib_sources})
 
 ADD_EXECUTABLE(ninja src/ninja.cc)
