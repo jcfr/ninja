@@ -19,8 +19,10 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
-#include <unistd.h>
+#ifndef _WIN32
+# include <poll.h>
+# include <unistd.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
