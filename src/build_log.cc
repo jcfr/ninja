@@ -46,7 +46,7 @@ bool BuildLog::OpenForWrite(const string& path, string* err) {
     *err = strerror(errno);
     return false;
   }
-  setlinebuf(log_file_);
+  setvbuf(log_file_, (char *)NULL, _IOLBF, 0); // equivalent to setlinebuf(log_file_);
   return true;
 }
 
