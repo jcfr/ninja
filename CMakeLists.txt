@@ -3,6 +3,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 PROJECT(ninja)
 
+OPTION(BUILD_TESTING "Enable testing" ON)
+
 # Additional CXX/C Flags
 SET(ADDITIONAL_C_FLAGS "" CACHE STRING "Additional C Flags")
 SET(ADDITIONAL_CXX_FLAGS "" CACHE STRING "Additional CXX Flags")
@@ -30,4 +32,14 @@ ADD_LIBRARY(ninjaLib STATIC ${ninja_lib_sources})
 
 ADD_EXECUTABLE(ninja src/ninja.cc)
 TARGET_LINK_LIBRARIES(ninja ninjaLib)
+
+IF(BUILD_TESTING)
+  ENABLE_TESTING()
+  INCLUDE(CTest)
+  MARK_AS_ADVANCED(DART_TESTING_TIMEOUT)
+  CONFIGURE_FILE(
+    README
+    ${CMAKE_CURRENT_BINARY_DIR}/README COPY)
+  ADD_TEST(LongSlowBuild ninja -f ${CMAKE_CURRENT_SOURCE_DIR}/misc/long-slow-build.ninja all)
+ENDIF()
 
