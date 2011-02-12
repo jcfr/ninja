@@ -14,16 +14,22 @@
 
 #include "util.h"
 
-#include <execinfo.h>
+#ifndef _WIN32
+# include <execinfo.h>
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 void DumpBacktrace(int skip_frames) {
+#ifdef _WIN32
+  printf("DumpBacktrace - Not implemented - See http://msdn.microsoft.com/en-us/library/ms680650.aspx");
+#else
   void* stack[256];
   int size = backtrace(stack, 256);
   ++skip_frames;  // Skip ourselves as well.
   backtrace_symbols_fd(stack + skip_frames, size - skip_frames, 2);
+#endif
 }
 
 void Fatal(const char* msg, ...) {
