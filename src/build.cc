@@ -15,12 +15,29 @@
 #include "build.h"
 
 #include <stdio.h>
-#include <sys/time.h>
+#ifdef _WIN32
+# include <winsock.h>
+# include <sys/timeb.h>
+# include <sys/types.h>
+# include <winsock.h>
+#else
+# include <sys/time.h>
+#endif
 
 #include "build_log.h"
 #include "graph.h"
 #include "ninja.h"
 #include "subprocess.h"
+
+#ifdef _WIN32
+void gettimeofday(struct timeval* t, void* timezone)
+{
+  struct _timeb timebuffer;
+  _ftime( &timebuffer );
+  t->tv_sec=timebuffer.time;
+  t->tv_usec=1000*timebuffer.millitm;
+}
+#endif
 
 struct BuildStatus {
   BuildStatus();
