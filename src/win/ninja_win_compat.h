@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <direct.h> // For _mkdir and _getcwd
+#include <stdarg.h> // For va_list
+#include <process.h> // For _execl
 
 typedef int ssize_t;
 
@@ -48,6 +50,12 @@ int mkstemp (char *__template)
     return -1;
     }
   return open(__template);
+}
+
+int execl(const char *__path, const char *__arg, ...)
+{
+  va_list args;
+  return _execl(__path, __arg, args);
 }
 
 #endif
