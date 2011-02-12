@@ -12,6 +12,9 @@ typedef int ssize_t;
 
 #define PATH_MAX FILENAME_MAX
 
+// Not implemented
+#define asm(CODE)
+
 int close(int fd)
 {
   return _close(fd);
