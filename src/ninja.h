@@ -26,7 +26,14 @@
 using namespace std;
 
 #include "eval_env.h"
-#include "hash_map.h"
+
+#ifndef _WIN32
+# include "hash_map.h"
+# define NINJA_HASH_MAP hash_map
+#else
+# include <hash_map>
+# define NINJA_HASH_MAP stdext::hash_map
+#endif
 
 struct Edge;
 struct FileStat;
@@ -54,7 +61,7 @@ struct RealDiskInterface : public DiskInterface {
 };
 
 struct StatCache {
-  typedef hash_map<string, FileStat*> Paths;
+  typedef NINJA_HASH_MAP<string, FileStat*> Paths;
   Paths paths_;
   FileStat* GetFile(const string& path);
   void Dump();
