@@ -22,6 +22,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#ifdef _WIN32
+# include "ninja_win_compat.h"
+#endif
+
 #include "build.h"
 #include "build_log.h"
 #include "parsers.h"

@@ -16,6 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#ifdef _WIN32
+# include "ninja_win_compat.h"
+#endif
+
 #include "build.h"
 #include "parsers.h"
 #include "test.h"

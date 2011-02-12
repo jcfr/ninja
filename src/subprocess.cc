@@ -29,6 +29,10 @@
 # include <sys/wait.h>
 #endif
 
+#ifdef _WIN32
+# include "ninja_win_compat.h"
+#endif
+
 #include "util.h"
 
 Subprocess::Stream::Stream() : fd_(-1) {}

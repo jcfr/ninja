@@ -19,6 +19,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef _WIN32
+# include "ninja_win_compat.h"
+#endif
+
 #include "graph.h"
 #include "ninja.h"
 

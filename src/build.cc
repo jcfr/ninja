@@ -21,6 +21,7 @@
 # include <sys/types.h>
 # include <winsock.h>
 # include <windows.h>
+# include "ninja_win_compat.h"
 #else
 # include <sys/time.h>
 #endif
