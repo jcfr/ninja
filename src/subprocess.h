@@ -17,6 +17,10 @@
 #include <queue>
 using namespace std;
 
+#ifdef _WIN32
+typedef int pid_t;
+#endif
+
 // Subprocess wraps a single async subprocess.  It is entirely
 // passive: it expects the caller to notify it when its fds are ready
 // for reading, as well as call Finish() to reap the child once done()
