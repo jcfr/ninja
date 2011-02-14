@@ -24,6 +24,9 @@
 
 #ifdef _WIN32
 # include "ninja_win_compat.h"
+# include "win/ninja_win.cc"
+#else
+# include "unix/ninja_unix.cc"
 #endif
 
 #include "build.h"
@@ -66,18 +69,7 @@ void usage(const BuildConfig& config) {
 }
 
 int GuessParallelism() {
-  int processors = 0;
-
-  const char kProcessorPrefix[] = "processor\t";
-  char buf[16 << 10];
-  FILE* f = fopen("/proc/cpuinfo", "r");
-  if (!f)
-    return 2;
-  while (fgets(buf, sizeof(buf), f)) {
-    if (strncmp(buf, kProcessorPrefix, sizeof(kProcessorPrefix) - 1) == 0)
-      ++processors;
-  }
-  fclose(f);
+  int processors = GetProcessorCount();
 
   switch (processors) {
   case 0:
