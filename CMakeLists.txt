@@ -21,6 +21,14 @@ CONFIGURE_FILE(
   src/browse.py
   ${CMAKE_CURRENT_BINARY_DIR}/src/browse.py COPY)
 
+find_program( BASH
+  bash
+  /bin
+  /usr/bin
+  /usr/local/bin
+  /sbin
+  )
+
 SET(ninja_lib_sources
   src/build.cc
   src/build_log.cc
