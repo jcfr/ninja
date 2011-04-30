@@ -24,42 +24,57 @@ rule cxx
   description = CC $out
 
 rule ar
-  command = ar crsT $out $in
+  command = ar crs $out $in
   description = AR $out
 
 rule link
   command = $cxx $conf_ldflags $ldflags -o $out $in
   description = LINK $out
 
+rule inline
+  command = src/inline.sh $varname < $in > $out
+  description = INLINE $out
+
+build $builddir/browse_py.h: inline src/browse.py
+  varname = kBrowsePy
+
+build $builddir/browse.o: cxx src/browse.cc | src/inline.sh || $builddir/browse_py.h
 build $builddir/build.o: cxx src/build.cc
 build $builddir/build_log.o: cxx src/build_log.cc
 build $builddir/eval_env.o: cxx src/eval_env.cc
 build $builddir/graph.o: cxx src/graph.cc
+build $builddir/graphviz.o: cxx src/graphviz.cc
 build $builddir/parsers.o: cxx src/parsers.cc
 build $builddir/subprocess.o: cxx src/subprocess.cc
 build $builddir/util.o: cxx src/util.cc
+build $builddir/clean.o: cxx src/clean.cc
 build $builddir/ninja_jumble.o: cxx src/ninja_jumble.cc
-build $builddir/ninja.a: ar $builddir/build.o $builddir/build_log.o \
-    $builddir/eval_env.o $builddir/graph.o $builddir/parsers.o \
-    $builddir/subprocess.o $builddir/util.o $builddir/ninja_jumble.o
+build $builddir/ninja.a: ar $builddir/browse.o $builddir/build.o \
+    $builddir/build_log.o $builddir/eval_env.o $builddir/graph.o \
+    $builddir/graphviz.o $builddir/parsers.o $builddir/subprocess.o \
+    $builddir/util.o $builddir/ninja_jumble.o $builddir/clean.o
 
-build $builddir/ninja.o: cxx src/ninja.cc | src/browse.py
+build $builddir/ninja.o: cxx src/ninja.cc
 build ninja: link $builddir/ninja.o $builddir/ninja.a
 
 build $builddir/build_test.o: cxx src/build_test.cc
 build $builddir/build_log_test.o: cxx src/build_log_test.cc
+build $builddir/graph_test.o: cxx src/graph_test.cc
 build $builddir/ninja_test.o: cxx src/ninja_test.cc
 build $builddir/parsers_test.o: cxx src/parsers_test.cc
 build $builddir/subprocess_test.o: cxx src/subprocess_test.cc
+build $builddir/test.o: cxx src/test.cc
+build $builddir/util_test.o: cxx src/util_test.cc
 build ninja_test: link $builddir/build_test.o $builddir/build_log_test.o \
-    $builddir/ninja_test.o $builddir/parsers_test.o \
-    $builddir/subprocess_test.o $builddir/ninja.a
+    $builddir/graph_test.o $builddir/ninja_test.o $builddir/parsers_test.o \
+    $builddir/subprocess_test.o $builddir/test.o $builddir/util_test.o \
+    $builddir/ninja.a
   ldflags = -g -rdynamic -lgtest -lgtest_main -lpthread
 
 
 # Generate a graph using the -g flag.
 rule gendot
-  command = ./ninja -t graph all > $out
+  command = ./ninja -t graph > $out
 rule gengraph
   command = dot -Tpng $in > $out
 
@@ -75,3 +90,18 @@ build manual.html: asciidoc manual.asciidoc
 build doc: phony || manual.html
 
 build all: phony || ninja ninja_test graph.png doc
+
+# Generate Doxygen.
+rule doxygen
+  command = doxygen $in
+  description = DOXYGEN $in
+
+doxygen_mainpage_generator = ./gen_doxygen_mainpage.sh
+
+rule doxygen_mainpage
+  command = $doxygen_mainpage_generator $in > $out
+  description = DOXYGEN_MAINPAGE $out
+
+build $builddir/doxygen_mainpage: doxygen_mainpage \
+  README HACKING COPYING | $doxygen_mainpage_generator
+build doxygen: doxygen doxygen.config | $builddir/doxygen_mainpage || $builddir/doxygen_mainpage

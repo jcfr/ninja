@@ -12,29 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NINJA_MAP_H_
-#define NINJA_MAP_H_
+#ifndef NINJA_BROWSE_H_
+#define NINJA_BROWSE_H_
 
-#ifdef _MSC_VER
-#include <hash_map>
+struct State;
 
-using stdext::hash_map;
+/// Run in "browse" mode, which execs a Python webserver.
+/// |command| is the command used to invoke ninja.
+/// This function does not return if it runs successfully.
+void RunBrowsePython(State* state, const char* ninja_command);
 
-#else
-
-#include <ext/hash_map>
-
-using __gnu_cxx::hash_map;
-
-namespace __gnu_cxx {
-template<>
-struct hash<std::string> {
-  size_t operator()(const std::string& s) const {
-    return hash<const char*>()(s.c_str());
-  }
-};
-}
-
-#endif
-
-#endif // NINJA_MAP_H_
+#endif  // NINJA_BROWSE_H_

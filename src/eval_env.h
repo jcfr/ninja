@@ -20,15 +20,17 @@
 #include <vector>
 using namespace std;
 
-// A scope for variable lookups.
+/// An interface for a scope for variable (e.g. "$foo") lookups.
 struct Env {
+  virtual ~Env() {}
   virtual string LookupVariable(const string& var) = 0;
 };
 
-// A standard scope, which contains a mapping of variables to values
-// as well as a pointer to a parent scope.
+/// An Env which contains a mapping of variables to values
+/// as well as a pointer to a parent scope.
 struct BindingEnv : public Env {
   BindingEnv() : parent_(NULL) {}
+  virtual ~BindingEnv() {}
   virtual string LookupVariable(const string& var);
   void AddBinding(const string& key, const string& val);
 
@@ -36,10 +38,10 @@ struct BindingEnv : public Env {
   Env* parent_;
 };
 
-// A tokenized string that contains variable references.
-// Can be evaluated relative to an Env.
+/// A tokenized string that contains variable references.
+/// Can be evaluated relative to an Env.
 struct EvalString {
-  bool Parse(const string& input, string* err);
+  bool Parse(const string& input, string* err, size_t* err_index=NULL);
   string Evaluate(Env* env) const;
 
   const string& unparsed() const { return unparsed_; }

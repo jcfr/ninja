@@ -162,6 +162,18 @@ TEST_F(ParserTest, PathVariables) {
   EXPECT_TRUE(state.LookupNode("out/exe"));
 }
 
+TEST_F(ParserTest, CanonicalizePaths) {
+  ASSERT_NO_FATAL_FAILURE(AssertParse(
+"rule cat\n"
+"  command = cat $in > $out\n"
+"build ./out.o: cat ./bar/baz/../foo.cc\n"));
+
+  EXPECT_FALSE(state.LookupNode("./out.o"));
+  EXPECT_TRUE(state.LookupNode("out.o"));
+  EXPECT_FALSE(state.LookupNode("./bar/baz/../foo.cc"));
+  EXPECT_TRUE(state.LookupNode("bar/foo.cc"));
+}
+
 TEST_F(ParserTest, Errors) {
   {
     ManifestParser parser(NULL, NULL);
@@ -190,6 +202,30 @@ TEST_F(ParserTest, Errors) {
     string err;
     EXPECT_FALSE(parser.Parse("x = 3\ny 2", &err));
     EXPECT_EQ("line 2, col 3: expected '=', got '2'", err);
+  }
+
+  {
+    State state;
+    ManifestParser parser(&state, NULL);
+    string err;
+    EXPECT_FALSE(parser.Parse("x = $\n", &err));
+    EXPECT_EQ("line 1, col 6: expected variable after $", err);
+  }
+
+  {
+    State state;
+    ManifestParser parser(&state, NULL);
+    string err;
+    EXPECT_FALSE(parser.Parse("x = \\\n $[\n", &err));
+    EXPECT_EQ("line 2, col 3: expected variable after $", err);
+  }
+
+  {
+    State state;
+    ManifestParser parser(&state, NULL);
+    string err;
+    EXPECT_FALSE(parser.Parse("x = a\\\n b\\\n $\n", &err));
+    EXPECT_EQ("line 3, col 3: expected variable after $", err);
   }
 
   {

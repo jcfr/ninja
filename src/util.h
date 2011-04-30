@@ -12,10 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Dump a backtrace to stderr.
-// |skip_frames| is how many frames to skip;
-// DumpBacktrace implicitly skips itself already.
-void DumpBacktrace(int skip_frames);
+#ifndef NINJA_UTIL_H_
+#define NINJA_UTIL_H_
+#pragma once
 
-// Log a fatal message, dump a backtrace, and exit.
+#include <string>
+using namespace std;
+
+/// Log a fatal message and exit.
 void Fatal(const char* msg, ...);
+
+/// Log an error message.
+void Error(const char* msg, ...);
+
+/// Canonicalize a path like "foo/../bar.h" into just "bar.h".
+bool CanonicalizePath(string* path, string* err);
+
+#endif  // NINJA_UTIL_H_
