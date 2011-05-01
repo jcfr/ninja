@@ -29,17 +29,31 @@ find_program( BASH
   /sbin
   )
 
+include_directories( BEFORE
+#  ${ninja_SOURCE_DIR}/src
+  ${ninja_BINARY_DIR}
+  )
+
 SET(ninja_lib_sources
+  src/clean.cc
+#  src/browse.cc
   src/build.cc
   src/build_log.cc
   src/eval_env.cc
   src/graph.cc
+  src/graphviz.cc
   src/parsers.cc
   src/subprocess.cc
   src/util.cc
+#  src/getopt.c
   src/ninja_jumble.cc
   )
 ADD_LIBRARY(ninjaLib STATIC ${ninja_lib_sources})
+
+add_custom_command( OUTPUT browse_py.h 
+  COMMAND ${BASH} ${ninja_SOURCE_DIR}/src/inline.sh kBrowsePy < ${ninja_BINARY_DIR}/src/browse.py > ${ninja_BINARY_DIR}/browse_py.h
+  DEPENDS src/inline.sh src/browse.py src/browse.cc
+  )
 
 ADD_EXECUTABLE(ninja src/ninja.cc)
 TARGET_LINK_LIBRARIES(ninja ninjaLib)
