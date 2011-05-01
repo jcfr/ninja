@@ -1,4 +1,3 @@
-
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 PROJECT(ninja)
@@ -30,7 +29,6 @@ find_program( BASH
   )
 
 include_directories( BEFORE
-#  ${ninja_SOURCE_DIR}/src
   ${ninja_BINARY_DIR}
   )
 
@@ -45,9 +43,14 @@ SET(ninja_lib_sources
   src/parsers.cc
   src/subprocess.cc
   src/util.cc
-#  src/getopt.c
   src/ninja_jumble.cc
   )
+
+if( WIN32 )
+  include_directories( BEFORE ${ninja_SOURCE_DIR}/src )
+  set( ninja_lib_sources ${ninja_lib_sources} src/getopt.c )
+endif() 
+
 ADD_LIBRARY(ninjaLib STATIC ${ninja_lib_sources})
 
 add_custom_command( OUTPUT browse_py.h 
