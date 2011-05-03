@@ -100,11 +100,25 @@ string RealDiskInterface::ReadFile(const string& path, string* err) {
 }
 
 bool RealDiskInterface::MakeDir(const string& path) {
-  if (mkdir(path.c_str(), 0777) < 0) {
+  if (::MakeDir(path) < 0) {
     Error("mkdir(%s): %s", path.c_str(), strerror(errno));
     return false;
   }
   return true;
+}
+
+int RealDiskInterface::RemoveFile(const string& path) {
+  if (remove(path.c_str()) < 0) {
+    switch (errno) {
+      case ENOENT:
+        return 1;
+      default:
+        Error("remove(%s): %s", path.c_str(), strerror(errno));
+        return -1;
+    }
+  } else {
+    return 0;
+  }
 }
 
 FileStat* StatCache::GetFile(const string& path) {
@@ -177,8 +191,8 @@ void State::AddOut(Edge* edge, const string& path) {
   Node* node = GetNode(path);
   edge->outputs_.push_back(node);
   if (node->in_edge_) {
-    Error("WARNING: multiple rules generate %s. "
-          "build will not be correct; continuing anyway", path.c_str());
+    Warning("multiple rules generate %s. "
+            "build will not be correct; continuing anyway", path.c_str());
   }
   node->in_edge_ = edge;
 }

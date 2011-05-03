@@ -22,10 +22,17 @@ using namespace std;
 /// Log a fatal message and exit.
 void Fatal(const char* msg, ...);
 
+/// Log a warning message.
+void Warning(const char* msg, ...);
+
 /// Log an error message.
 void Error(const char* msg, ...);
 
 /// Canonicalize a path like "foo/../bar.h" into just "bar.h".
 bool CanonicalizePath(string* path, string* err);
+
+/// Create a directory (mode 0777 on Unix).
+/// Portability abstraction.
+int MakeDir(const string& path);
 
 #endif  // NINJA_UTIL_H_

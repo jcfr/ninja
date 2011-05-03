@@ -18,8 +18,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include <vector>
+
+#ifdef _WIN32
+#include <direct.h>  // _mkdir
+#endif
 
 void Fatal(const char* msg, ...) {
   va_list ap;
@@ -29,6 +35,15 @@ void Fatal(const char* msg, ...) {
   va_end(ap);
   fprintf(stderr, "\n");
   exit(1);
+}
+
+void Warning(const char* msg, ...) {
+  va_list ap;
+  fprintf(stderr, "ninja: WARNING: ");
+  va_start(ap, msg);
+  vfprintf(stderr, msg, ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
 }
 
 void Error(const char* msg, ...) {
@@ -126,4 +141,12 @@ bool CanonicalizePath(string* path, string* err) {
   path->resize(p - path->data());
 
   return true;
+}
+
+int MakeDir(const string& path) {
+#ifdef _WIN32
+  return _mkdir(path.c_str());
+#else
+  return mkdir(path.c_str(), 0777);
+#endif
 }
