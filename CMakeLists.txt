@@ -16,10 +16,6 @@ ENDIF()
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS_INIT} ${cflags} ${ADDITIONAL_C_FLAGS}")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_INIT} ${cflags} ${ADDITIONAL_CXX_FLAGS}")
 
-CONFIGURE_FILE(
-  src/browse.py
-  ${CMAKE_CURRENT_BINARY_DIR}/src/browse.py COPY)
-
 find_program( BASH
   bash
   /bin
@@ -34,7 +30,7 @@ include_directories( BEFORE
 
 SET(ninja_lib_sources
   src/clean.cc
-#  src/browse.cc
+  src/browse.cc
   src/build.cc
   src/build_log.cc
   src/eval_env.cc
@@ -54,9 +50,11 @@ endif()
 ADD_LIBRARY(ninjaLib STATIC ${ninja_lib_sources})
 
 add_custom_command( OUTPUT browse_py.h 
-  COMMAND ${BASH} ${ninja_SOURCE_DIR}/src/inline.sh kBrowsePy < ${ninja_BINARY_DIR}/src/browse.py > ${ninja_BINARY_DIR}/browse_py.h
-  DEPENDS src/inline.sh src/browse.py src/browse.cc
+  COMMAND ${BASH} ${ninja_SOURCE_DIR}/src/inline.sh kBrowsePy < ${ninja_SOURCE_DIR}/src/browse.py > ${ninja_BINARY_DIR}/browse_py.h
+  DEPENDS ${ninja_SOURCE_DIR}/src/inline.sh ${ninja_SOURCE_DIR}/src/browse.py ${ninja_SOURCE_DIR}/src/browse.cc
   )
+add_custom_target( gen_py_browse_temp DEPENDS browse_py.h )
+add_dependencies( ninjaLib gen_py_browse_temp )
 
 ADD_EXECUTABLE(ninja src/ninja.cc)
 TARGET_LINK_LIBRARIES(ninja ninjaLib)
