@@ -59,6 +59,27 @@ add_dependencies( ninjaLib gen_py_browse_temp )
 ADD_EXECUTABLE(ninja src/ninja.cc)
 TARGET_LINK_LIBRARIES(ninja ninjaLib)
 
+configure_file( ${ninja_SOURCE_DIR}/doxygen.config.in
+  ${ninja_BINARY_DIR}/doxygen.config
+  @ONLY
+  )
+
+option( BUILD_DOXYGEN "Build Doxygen Documentation" OFF )
+
+if( BUILD_DOXYGEN )
+
+  find_package( Doxygen )
+
+  if( DOXYGEN_FOUND )
+    if( DOXYGEN_DOT_FOUND )
+      add_custom_target( doc ALL
+        ${DOXYGEN_EXECUTABLE} ${ninja_BINARY_DIR}/doxygen.config
+        DEPENDS ${ninja_BINARY_DIR}/doxygen.config
+      )
+    endif()
+  endif()
+endif()
+
 IF(BUILD_TESTING)
   ENABLE_TESTING()
   INCLUDE(CTest)
