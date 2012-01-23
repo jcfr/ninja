@@ -12,11 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef NINJA_TEST_H_
+#define NINJA_TEST_H_
+
 #include <gtest/gtest.h>
 
-#include "graph.h"
-#include "ninja.h"
+#include "disk_interface.h"
+#include "state.h"
+#include "util.h"
 
+// Support utilites for tests.
+
+struct Node;
+
+/// A base test fixture that includes a State object with a
+/// builtin "cat" rule.
 struct StateTestWithBuiltinRules : public testing::Test {
   StateTestWithBuiltinRules();
   Node* GetNode(const string& path);
@@ -25,3 +35,44 @@ struct StateTestWithBuiltinRules : public testing::Test {
 };
 
 void AssertParse(State* state, const char* input);
+
+/// An implementation of DiskInterface that uses an in-memory representation
+/// of disk state.  It also logs file accesses and directory creations
+/// so it can be used by tests to verify disk access patterns.
+struct VirtualFileSystem : public DiskInterface {
+  /// "Create" a file with a given mtime and contents.
+  void Create(const string& path, int time, const string& contents);
+
+  // DiskInterface
+  virtual TimeStamp Stat(const string& path);
+  virtual bool MakeDir(const string& path);
+  virtual string ReadFile(const string& path, string* err);
+  virtual int RemoveFile(const string& path);
+
+  /// An entry for a single in-memory file.
+  struct Entry {
+    int mtime;
+    string contents;
+  };
+
+  vector<string> directories_made_;
+  vector<string> files_read_;
+  typedef map<string, Entry> FileMap;
+  FileMap files_;
+  set<string> files_removed_;
+};
+
+struct ScopedTempDir {
+  /// Create a temporary directory and chdir into it.
+  void CreateAndEnter(const string& name);
+
+  /// Clean up the temporary directory.
+  void Cleanup();
+
+  /// The temp directory containing our dir.
+  string start_dir_;
+  /// The subdirectory name for our dir, or empty if it hasn't been set up.
+  string temp_dir_name_;
+};
+
+#endif // NINJA_TEST_H_

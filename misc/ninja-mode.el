@@ -22,6 +22,10 @@
                                      'words))
              font-lock-keyword-face)
        '("\\([[:alnum:]_]+\\) =" . (1 font-lock-variable-name-face))
+       ;; Variable expansion.
+       '("\\($[[:alnum:]_]+\\)" . (1 font-lock-variable-name-face))
+       ;; Rule names
+       '("rule \\([[:alnum:]_]+\\)" . (1 font-lock-function-name-face))
        ))
 (define-derived-mode ninja-mode fundamental-mode "ninja"
   (setq comment-start "#")
@@ -29,3 +33,5 @@
   ; quoted strings highlighted.
   (setq font-lock-defaults '(ninja-keywords t))
   )
+
+(provide 'ninja-mode)

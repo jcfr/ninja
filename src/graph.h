@@ -20,22 +20,37 @@
 using namespace std;
 
 #include "eval_env.h"
+#include "timestamp.h"
 
 struct DiskInterface;
+struct Edge;
 
-struct Node;
-struct FileStat {
-  FileStat(const string& path) : path_(path), mtime_(-1), node_(NULL) {}
+/// Information about a node in the dependency graph: the file, whether
+/// it's dirty, mtime, etc.
+struct Node {
+  Node(const string& path) : path_(path), mtime_(-1), dirty_(false),
+                             in_edge_(NULL) {}
 
-  // Return true if the file exists (mtime_ got a value).
+  /// Return true if the file exists (mtime_ got a value).
   bool Stat(DiskInterface* disk_interface);
 
-  // Return true if we needed to stat.
+  /// Return true if we needed to stat.
   bool StatIfNecessary(DiskInterface* disk_interface) {
     if (status_known())
       return false;
     Stat(disk_interface);
     return true;
+  }
+
+  /// Mark as not-yet-stat()ed and not dirty.
+  void ResetState() {
+    mtime_ = -1;
+    dirty_ = false;
+  }
+
+  /// Mark the Node as already-stat()ed and missing.
+  void MarkMissing() {
+    mtime_ = 0;
   }
 
   bool exists() const {
@@ -46,45 +61,94 @@ struct FileStat {
     return mtime_ != -1;
   }
 
-  string path_;
-  // Possible values of mtime_:
-  //   -1: file hasn't been examined
-  //   0:  we looked, and file doesn't exist
-  //   >0: actual file's mtime
-  time_t mtime_;
-  Node* node_;
-};
-
-struct Edge;
-struct Node {
-  Node(FileStat* file) : file_(file), dirty_(false), in_edge_(NULL) {}
+  const string& path() const { return path_; }
+  TimeStamp mtime() const { return mtime_; }
 
   bool dirty() const { return dirty_; }
+  void set_dirty(bool dirty) { dirty_ = dirty; }
+  void MarkDirty() { dirty_ = true; }
 
-  FileStat* file_;
+  Edge* in_edge() const { return in_edge_; }
+  void set_in_edge(Edge* edge) { in_edge_ = edge; }
+
+  const vector<Edge*>& out_edges() const { return out_edges_; }
+  void AddOutEdge(Edge* edge) { out_edges_.push_back(edge); }
+
+private:
+  string path_;
+  /// Possible values of mtime_:
+  ///   -1: file hasn't been examined
+  ///   0:  we looked, and file doesn't exist
+  ///   >0: actual file's mtime
+  TimeStamp mtime_;
+
+  /// Dirty is true when the underlying file is out-of-date.
+  /// But note that Edge::outputs_ready_ is also used in judging which
+  /// edges to build.
   bool dirty_;
+
+  /// The Edge that produces this Node, or NULL when there is no
+  /// known edge to produce it.
   Edge* in_edge_;
+
+  /// All Edges that use this Node as an input.
   vector<Edge*> out_edges_;
 };
 
+/// An invokable build command and associated metadata (description, etc.).
 struct Rule {
-  Rule(const string& name) : name_(name) { }
+  Rule(const string& name) : name_(name), generator_(false), restat_(false) { }
 
-  bool ParseCommand(const string& command, string* err) {
-    return command_.Parse(command, err);
-  }
+  const string& name() const { return name_; }
+
+  bool generator() const { return generator_; }
+  bool restat() const { return restat_; }
+
+  const EvalString& command() const { return command_; }
+  EvalString& command() { return command_; }
+  const EvalString& description() const { return description_; }
+  const EvalString& depfile() const { return depfile_; }
+
+  // TODO: private:
+
+  // Allow the parsers to reach into this object and fill out its fields.
+  friend struct ManifestParser;
+
   string name_;
+
+  bool generator_;
+  bool restat_;
+
   EvalString command_;
   EvalString description_;
   EvalString depfile_;
 };
 
+struct BuildLog;
+struct Node;
 struct State;
-struct Edge {
-  Edge() : rule_(NULL), env_(NULL), implicit_deps_(0), order_only_deps_(0) {}
 
+/// An edge in the dependency graph; links between Nodes using Rules.
+struct Edge {
+  Edge() : rule_(NULL), env_(NULL), outputs_ready_(false), implicit_deps_(0),
+           order_only_deps_(0) {}
+
+  /// Examine inputs, outputs, and command lines to judge whether this edge
+  /// needs to be re-run, and update outputs_ready_ and each outputs' |dirty_|
+  /// state accordingly.
+  /// Returns false on failure.
   bool RecomputeDirty(State* state, DiskInterface* disk_interface, string* err);
+
+  /// Recompute whether a given single output should be marked dirty.
+  /// Returns true if so.
+  bool RecomputeOutputDirty(BuildLog* build_log, TimeStamp most_recent_input,
+                            const string& command, Node* output);
+
+  /// Return true if all inputs' in-edges are ready.
+  bool AllInputsReady() const;
+
   string EvaluateCommand();  // XXX move to env, take env ptr
+  string EvaluateDepFile();
   string GetDescription();
   bool LoadDepFile(State* state, DiskInterface* disk_interface, string* err);
 
@@ -94,6 +158,10 @@ struct Edge {
   vector<Node*> inputs_;
   vector<Node*> outputs_;
   Env* env_;
+  bool outputs_ready_;
+
+  const Rule& rule() const { return *rule_; }
+  bool outputs_ready() const { return outputs_ready_; }
 
   // XXX There are three types of inputs.
   // 1) explicit deps, which show up as $in on the command line;

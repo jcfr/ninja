@@ -17,106 +17,55 @@
 
 #include <string>
 #include <vector>
+#include <limits>
 
 using namespace std;
 
+#include "lexer.h"
+#include "string_piece.h"
+
 struct BindingEnv;
-
-struct Token {
-  enum Type {
-    NONE,
-    UNKNOWN,
-    IDENT,
-    RULE,
-    BUILD,
-    SUBNINJA,
-    INCLUDE,
-    NEWLINE,
-    EQUALS,
-    COLON,
-    PIPE,
-    PIPE2,
-    INDENT,
-    OUTDENT,
-    TEOF
-  };
-  explicit Token(Type type) : type_(type) {}
-
-  void Clear() { type_ = NONE; }
-  string AsString() const;
-
-  Type type_;
-  const char* pos_;
-  const char* end_;
-};
-
-struct Tokenizer {
-  Tokenizer(bool whitespace_significant)
-      : whitespace_significant_(whitespace_significant),
-        token_(Token::NONE), line_number_(1),
-        last_indent_(0), cur_indent_(-1) {}
-
-  void Start(const char* start, const char* end);
-  bool Error(const string& message, string* err);
-  // Call Error() with "expected foo, got bar".
-  bool ErrorExpected(const string& expected, string* err);
-
-  const Token& token() const { return token_; }
-
-  void SkipWhitespace(bool newline=false);
-  bool Newline(string* err);
-  bool ExpectToken(Token::Type expected, string* err);
-  bool ReadIdent(string* out);
-  bool ReadToNewline(string* text, string* err);
-
-  Token::Type PeekToken();
-  void ConsumeToken();
-
-  bool whitespace_significant_;
-
-  const char* cur_;
-  const char* end_;
-
-  const char* cur_line_;
-  Token token_;
-  int line_number_;
-  int last_indent_, cur_indent_;
-};
-
-struct MakefileParser {
-  MakefileParser();
-  bool Parse(const string& input, string* err);
-
-  Tokenizer tokenizer_;
-  string out_;
-  vector<string> ins_;
-};
-
+struct EvalString;
 struct State;
 
+/// Parses .ninja files.
 struct ManifestParser {
   struct FileReader {
+    virtual ~FileReader() {}
     virtual bool ReadFile(const string& path, string* content, string* err) = 0;
   };
 
   ManifestParser(State* state, FileReader* file_reader);
 
+  /// Load and parse a file.
   bool Load(const string& filename, string* err);
-  bool Parse(const string& input, string* err);
 
+  /// Parse a text string of input.  Used by tests.
+  bool ParseTest(const string& input, string* err) {
+    return Parse("input", input, err);
+  }
+
+private:
+  /// Parse a file, given its contents as a string.
+  bool Parse(const string& filename, const string& input, string* err);
+
+  /// Parse various statement types.
   bool ParseRule(string* err);
-  // Parse a key=val statement.  If expand is true, evaluate variables
-  // within the value immediately.
-  bool ParseLet(string* key, string* val, bool expand, string* err);
+  bool ParseLet(string* key, EvalString* val, string* err);
   bool ParseEdge(string* err);
+  bool ParseDefault(string* err);
 
-  // Parse either a 'subninja' or 'include' line.
-  bool ParseFileInclude(Token::Type type, string* err);
+  /// Parse either a 'subninja' or 'include' line.
+  bool ParseFileInclude(bool new_scope, string* err);
+
+  /// If the next token is not \a expected, produce an error string
+  /// saying "expectd foo, got bar".
+  bool ExpectToken(Lexer::Token expected, string* err);
 
   State* state_;
   BindingEnv* env_;
   FileReader* file_reader_;
-  Tokenizer tokenizer_;
+  Lexer lexer_;
 };
 
 #endif  // NINJA_PARSERS_H_

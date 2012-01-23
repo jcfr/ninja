@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 #
 # Copyright 2001 Google Inc. All Rights Reserved.
 #
@@ -26,7 +26,9 @@ import sys
 import webbrowser
 
 def match_strip(prefix, line):
-    assert line.startswith(prefix)
+    if not line.startswith(prefix):
+        print prefix, line
+        assert line.startswith(prefix)
     return line[len(prefix):]
 
 def parse(text):
@@ -70,26 +72,33 @@ h2 {
 tt {
     font-family: WebKitHack, monospace;
 }
+ul {
+    margin-top: 0;
+    padding-left: 20px;
+}
 </style>'''
-    print '<table><tr><td colspan=3>'
-    print '<h1>%s</h1>' % node
+    print '<table width=500><tr><td colspan=3>'
+    print '<h1><tt>%s</tt></h1>' % node
     print '</td></tr>'
 
     print '<tr><td valign=top>'
-    print '<h2>input</h2>'
     if input:
-        print '<p><tt>%s</tt>:</p>' % input[0]
-        print '<ul>'
-        for i in input[1:]:
-            print '<li><tt><a href="?%s">%s</a></tt></li>' % (i, i)
-        print '</ul>'
+        print '<h2>built by rule: <tt>%s</tt></h2>' % input[0]
+        if len(input) > 0:
+            print 'inputs:'
+            print '<ul>'
+            for i in input[1:]:
+                print '<li><tt><a href="?%s">%s</a></tt></li>' % (i, i)
+            print '</ul>'
+    else:
+        print '<h2>no input rule</h2>'
     print '</td>'
     print '<td width=50>&nbsp;</td>'
 
     print '<td valign=top>'
-    print '<h2>outputs</h2>'
+    print '<h2>dependents</h2>'
     for output in outputs:
-        print '<p><tt>%s</tt>:</p>' % output[0]
+        print '<tt>%s</tt>' % output[0]
         print '<ul>'
         for i in output[1:]:
             print '<li><tt><a href="?%s">%s</a></tt></li>' % (i, i)
@@ -97,7 +106,7 @@ tt {
     print '</td></tr></table>'
 
 def ninja_dump(target):
-    proc = subprocess.Popen(['./ninja', '-t', 'query', target],
+    proc = subprocess.Popen([sys.argv[1], '-t', 'query', target],
                             stdout=subprocess.PIPE)
     return proc.communicate()[0]
 
@@ -108,7 +117,7 @@ class RequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if target == '':
             self.send_response(302)
-            self.send_header('Location', '?' + sys.argv[1])
+            self.send_header('Location', '?' + sys.argv[2])
             self.end_headers()
             return
 

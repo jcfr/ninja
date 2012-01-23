@@ -12,52 +12,71 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef NINJA_BUILD_LOG_H_
+#define NINJA_BUILD_LOG_H_
+
 #include <map>
 #include <string>
 using namespace std;
 
+#include "hash_map.h"
+#include "timestamp.h"
+
 struct BuildConfig;
 struct Edge;
 
-// Store a log of every command ran for every build.
-// It has a few uses:
-// 1) historical command lines for output files, so we know
-//    when we need to rebuild due to the command changing
-// 2) historical timing information
-// 3) maybe we can generate some sort of build overview output
-//    from it
+/// Store a log of every command ran for every build.
+/// It has a few uses:
+///
+/// 1) historical command lines for output files, so we know
+///    when we need to rebuild due to the command changing
+/// 2) historical timing information
+/// 3) maybe we can generate some sort of build overview output
+///    from it
 struct BuildLog {
   BuildLog();
+  ~BuildLog();
 
   void SetConfig(BuildConfig* config) { config_ = config; }
   bool OpenForWrite(const string& path, string* err);
-  void RecordCommand(Edge* edge, int time_ms);
+  void RecordCommand(Edge* edge, int start_time, int end_time,
+                     TimeStamp restat_mtime = 0);
   void Close();
 
-  // Load the on-disk log.
+  /// Load the on-disk log.
   bool Load(const string& path, string* err);
 
   struct LogEntry {
     string output;
     string command;
-    int time_ms;
+    int start_time;
+    int end_time;
+    TimeStamp restat_mtime;
+
+    // Used by tests.
     bool operator==(const LogEntry& o) {
-      return output == o.output && command == o.command && time_ms == o.time_ms;
+      return output == o.output && command == o.command &&
+          start_time == o.start_time && end_time == o.end_time &&
+          restat_mtime == o.restat_mtime;
     }
   };
 
-  // Lookup a previously-run command by its output path.
+  /// Lookup a previously-run command by its output path.
   LogEntry* LookupByOutput(const string& path);
 
-  // Serialize an entry into a log file.
+  /// Serialize an entry into a log file.
   void WriteEntry(FILE* f, const LogEntry& entry);
 
-  // Rewrite the known log entries, throwing away old data.
+  /// Rewrite the known log entries, throwing away old data.
   bool Recompact(const string& path, string* err);
 
-  typedef map<string, LogEntry*> Log;
+  // TODO: make these private.
+  typedef ExternalStringHashMap<LogEntry*>::Type Log;
   Log log_;
+private:
   FILE* log_file_;
   BuildConfig* config_;
   bool needs_recompaction_;
 };
+
+#endif // NINJA_BUILD_LOG_H_

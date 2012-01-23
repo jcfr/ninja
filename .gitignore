@@ -1,8 +1,11 @@
+*.pyc
+*.exe
 TAGS
 /build
+/build.ninja
 /ninja
 /ninja_test
+/parser_perftest
 /graph.png
-/README.html
-/config.ninja
-/manual.html
+/doc/manual.html
+/doc/doxygen

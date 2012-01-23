@@ -16,11 +16,12 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "build.h"
 #include "graph.h"
-#include "ninja.h"
+#include "util.h"
 
 // Implementation details:
 // Each run's log appends to the log file.
@@ -29,14 +30,26 @@
 // Once the number of redundant entries exceeds a threshold, we write
 // out a new file and replace the existing one with it.
 
+namespace {
+
+const char kFileSignature[] = "# ninja log v%d\n";
+const int kCurrentVersion = 4;
+
+}  // namespace
+
 BuildLog::BuildLog()
   : log_file_(NULL), config_(NULL), needs_recompaction_(false) {}
+
+BuildLog::~BuildLog() {
+  Close();
+}
 
 bool BuildLog::OpenForWrite(const string& path, string* err) {
   if (config_ && config_->dry_run)
     return true;  // Do nothing, report success.
 
   if (needs_recompaction_) {
+    Close();
     if (!Recompact(path, err))
       return false;
   }
@@ -46,36 +59,47 @@ bool BuildLog::OpenForWrite(const string& path, string* err) {
     *err = strerror(errno);
     return false;
   }
-  setlinebuf(log_file_);
+  setvbuf(log_file_, NULL, _IOLBF, BUFSIZ);
+  SetCloseOnExec(fileno(log_file_));
+
+  if (ftell(log_file_) == 0) {
+    if (fprintf(log_file_, kFileSignature, kCurrentVersion) < 0) {
+      *err = strerror(errno);
+      return false;
+    }
+  }
+
   return true;
 }
 
-void BuildLog::RecordCommand(Edge* edge, int time_ms) {
-  if (!log_file_)
-    return;
-
+void BuildLog::RecordCommand(Edge* edge, int start_time, int end_time,
+                             TimeStamp restat_mtime) {
   const string command = edge->EvaluateCommand();
   for (vector<Node*>::iterator out = edge->outputs_.begin();
        out != edge->outputs_.end(); ++out) {
-    const string& path = (*out)->file_->path_;
+    const string& path = (*out)->path();
     Log::iterator i = log_.find(path);
     LogEntry* log_entry;
     if (i != log_.end()) {
       log_entry = i->second;
     } else {
       log_entry = new LogEntry;
-      log_.insert(make_pair(path, log_entry));
+      log_entry->output = path;
+      log_.insert(Log::value_type(log_entry->output, log_entry));
     }
-    log_entry->output = path;
     log_entry->command = command;
-    log_entry->time_ms = time_ms;
+    log_entry->start_time = start_time;
+    log_entry->end_time = end_time;
+    log_entry->restat_mtime = restat_mtime;
 
-    WriteEntry(log_file_, *log_entry);
+    if (log_file_)
+      WriteEntry(log_file_, *log_entry);
   }
 }
 
 void BuildLog::Close() {
-  fclose(log_file_);
+  if (log_file_)
+    fclose(log_file_);
   log_file_ = NULL;
 }
 
@@ -88,21 +112,55 @@ bool BuildLog::Load(const string& path, string* err) {
     return false;
   }
 
+  int log_version = 0;
   int unique_entry_count = 0;
   int total_entry_count = 0;
 
   char buf[256 << 10];
   while (fgets(buf, sizeof(buf), file)) {
+    if (!log_version) {
+      log_version = 1;  // Assume by default.
+      if (sscanf(buf, kFileSignature, &log_version) > 0)
+        continue;
+    }
+
+    char field_separator = log_version >= 4 ? '\t' : ' ';
+
     char* start = buf;
-    char* end = strchr(start, ' ');
+    char* end = strchr(start, field_separator);
     if (!end)
       continue;
-
     *end = 0;
-    int time_ms = atoi(start);
+
+    int start_time = 0, end_time = 0;
+    TimeStamp restat_mtime = 0;
+
+    start_time = atoi(start);
     start = end + 1;
-    end = strchr(start, ' ');
+
+    end = strchr(start, field_separator);
+    if (!end)
+      continue;
+    *end = 0;
+    end_time = atoi(start);
+    start = end + 1;
+
+    end = strchr(start, field_separator);
+    if (!end)
+      continue;
+    *end = 0;
+    restat_mtime = atol(start);
+    start = end + 1;
+
+    end = strchr(start, field_separator);
+    if (!end)
+      continue;
     string output = string(start, end - start);
+
+    start = end + 1;
+    end = strchr(start, '\n');
+    if (!end)
+      continue;
 
     LogEntry* entry;
     Log::iterator i = log_.find(output);
@@ -110,24 +168,31 @@ bool BuildLog::Load(const string& path, string* err) {
       entry = i->second;
     } else {
       entry = new LogEntry;
-      log_.insert(make_pair(output, entry));
+      entry->output = output;
+      log_.insert(Log::value_type(entry->output, entry));
       ++unique_entry_count;
     }
     ++total_entry_count;
 
-    entry->time_ms = time_ms;
-    entry->output = output;
-
-    start = end + 1;
-    end = strchr(start, '\n');
+    entry->start_time = start_time;
+    entry->end_time = end_time;
+    entry->restat_mtime = restat_mtime;
     entry->command = string(start, end - start);
   }
 
-  // Mark the log as "needs rebuiding" if it has kCompactionRatio times
-  // too many log entries.
+  // Decide whether it's time to rebuild the log:
+  // - if we're upgrading versions
+  // - if it's getting large
+  int kMinCompactionEntryCount = 100;
   int kCompactionRatio = 3;
-  if (total_entry_count > unique_entry_count * kCompactionRatio)
+  if (log_version < kCurrentVersion) {
     needs_recompaction_ = true;
+  } else if (total_entry_count > kMinCompactionEntryCount &&
+             total_entry_count > unique_entry_count * kCompactionRatio) {
+    needs_recompaction_ = true;
+  }
+
+  fclose(file);
 
   return true;
 }
@@ -140,8 +205,9 @@ BuildLog::LogEntry* BuildLog::LookupByOutput(const string& path) {
 }
 
 void BuildLog::WriteEntry(FILE* f, const LogEntry& entry) {
-  fprintf(f, "%d %s %s\n",
-          entry.time_ms, entry.output.c_str(), entry.command.c_str());
+  fprintf(f, "%d\t%d\t%ld\t%s\t%s\n",
+          entry.start_time, entry.end_time, (long) entry.restat_mtime,
+          entry.output.c_str(), entry.command.c_str());
 }
 
 bool BuildLog::Recompact(const string& path, string* err) {
@@ -154,11 +220,20 @@ bool BuildLog::Recompact(const string& path, string* err) {
     return false;
   }
 
+  if (fprintf(f, kFileSignature, kCurrentVersion) < 0) {
+    *err = strerror(errno);
+    return false;
+  }
+
   for (Log::iterator i = log_.begin(); i != log_.end(); ++i) {
     WriteEntry(f, *i->second);
   }
 
   fclose(f);
+  if (unlink(path.c_str()) < 0) {
+    *err = strerror(errno);
+    return false;
+  }
 
   if (rename(temp_path.c_str(), path.c_str()) < 0) {
     *err = strerror(errno);
