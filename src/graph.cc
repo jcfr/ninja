@@ -19,6 +19,7 @@
 #include "build_log.h"
 #include "ninja.h"
 #include "parsers.h"
+#include "util.h"
 
 bool FileStat::Stat(DiskInterface* disk_interface) {
   mtime_ = disk_interface->Stat(path_);
@@ -91,6 +92,7 @@ bool Edge::RecomputeDirty(State* state, DiskInterface* disk_interface,
   return true;
 }
 
+/// An Env for an Edge, providing $in and $out.
 struct EdgeEnv : public Env {
   EdgeEnv(Edge* edge) : edge_(edge) {}
   virtual string LookupVariable(const string& var) {
@@ -124,7 +126,8 @@ string Edge::GetDescription() {
   return rule_->description_.Evaluate(&env);
 }
 
-bool Edge::LoadDepFile(State* state, DiskInterface* disk_interface, string* err) {
+bool Edge::LoadDepFile(State* state, DiskInterface* disk_interface,
+                       string* err) {
   EdgeEnv env(this);
   string path = rule_->depfile_.Evaluate(&env);
 
@@ -155,18 +158,13 @@ bool Edge::LoadDepFile(State* state, DiskInterface* disk_interface, string* err)
   // Add all its in-edges.
   for (vector<string>::iterator i = makefile.ins_.begin();
        i != makefile.ins_.end(); ++i) {
+    if (!CanonicalizePath(&*i, err))
+      return false;
+
     Node* node = state->GetNode(*i);
-    for (vector<Node*>::iterator j = inputs_.begin(); j != inputs_.end(); ++j) {
-      if (*j == node) {
-        node = NULL;
-        break;
-      }
-    }
-    if (node) {
-      inputs_.insert(inputs_.end() - order_only_deps_, node);
-      node->out_edges_.push_back(this);
-      ++implicit_deps_;
-    }
+    inputs_.insert(inputs_.end() - order_only_deps_, node);
+    node->out_edges_.push_back(this);
+    ++implicit_deps_;
   }
 
   return true;

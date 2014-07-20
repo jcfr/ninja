@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef NINJA_BUILD_LOG_H_
+#define NINJA_BUILD_LOG_H_
+
 #include <map>
 #include <string>
 using namespace std;
@@ -19,13 +22,14 @@ using namespace std;
 struct BuildConfig;
 struct Edge;
 
-// Store a log of every command ran for every build.
-// It has a few uses:
-// 1) historical command lines for output files, so we know
-//    when we need to rebuild due to the command changing
-// 2) historical timing information
-// 3) maybe we can generate some sort of build overview output
-//    from it
+/// Store a log of every command ran for every build.
+/// It has a few uses:
+///
+/// 1) historical command lines for output files, so we know
+///    when we need to rebuild due to the command changing
+/// 2) historical timing information
+/// 3) maybe we can generate some sort of build overview output
+///    from it
 struct BuildLog {
   BuildLog();
 
@@ -34,7 +38,7 @@ struct BuildLog {
   void RecordCommand(Edge* edge, int time_ms);
   void Close();
 
-  // Load the on-disk log.
+  /// Load the on-disk log.
   bool Load(const string& path, string* err);
 
   struct LogEntry {
@@ -46,13 +50,13 @@ struct BuildLog {
     }
   };
 
-  // Lookup a previously-run command by its output path.
+  /// Lookup a previously-run command by its output path.
   LogEntry* LookupByOutput(const string& path);
 
-  // Serialize an entry into a log file.
+  /// Serialize an entry into a log file.
   void WriteEntry(FILE* f, const LogEntry& entry);
 
-  // Rewrite the known log entries, throwing away old data.
+  /// Rewrite the known log entries, throwing away old data.
   bool Recompact(const string& path, string* err);
 
   typedef map<string, LogEntry*> Log;
@@ -61,3 +65,5 @@ struct BuildLog {
   BuildConfig* config_;
   bool needs_recompaction_;
 };
+
+#endif // NINJA_BUILD_LOG_H_

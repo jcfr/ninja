@@ -15,38 +15,66 @@
 #include "build.h"
 
 #include <stdio.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/ioctl.h>
 #include <sys/time.h>
+#include <sys/termios.h>
+#endif
 
 #include "build_log.h"
 #include "graph.h"
 #include "ninja.h"
 #include "subprocess.h"
 
+namespace {
+
+int64_t GetTimeMillis() {
+#ifdef _WIN32
+  // GetTickCount64 is only available on Vista or later.
+  return GetTickCount();
+#else
+  timeval now;
+  gettimeofday(&now, NULL);
+  return ((int64_t)now.tv_sec * 1000) + (now.tv_usec / 1000);
+#endif
+}
+
+}
+
+/// Tracks the status of a build: completion fraction, printing updates.
 struct BuildStatus {
   BuildStatus();
   void PlanHasTotalEdges(int total);
   void BuildEdgeStarted(Edge* edge);
-  // Returns the time the edge took, in ms.
+  /// Returns the time the edge took, in ms.
   int BuildEdgeFinished(Edge* edge);
 
   void PrintStatus(Edge* edge);
 
-  time_t last_update_;
+  int64_t last_update_millis_;
   int finished_edges_, total_edges_;
 
-  typedef map<Edge*, timeval> RunningEdgeMap;
+  typedef map<Edge*, int64_t> RunningEdgeMap;
   RunningEdgeMap running_edges_;
 
   BuildConfig::Verbosity verbosity_;
-  // Whether we can do fancy terminal control codes.
+  /// Whether we can do fancy terminal control codes.
   bool smart_terminal_;
 };
 
 BuildStatus::BuildStatus()
-    : last_update_(time(NULL)), finished_edges_(0), total_edges_(0),
+    : last_update_millis_(GetTimeMillis()),
+      finished_edges_(0), total_edges_(0),
       verbosity_(BuildConfig::NORMAL) {
+#ifndef WIN32
   const char* term = getenv("TERM");
   smart_terminal_ = isatty(1) && term && string(term) != "dumb";
+#else
+  smart_terminal_ = false;
+#endif
 }
 
 void BuildStatus::PlanHasTotalEdges(int total) {
@@ -54,16 +82,13 @@ void BuildStatus::PlanHasTotalEdges(int total) {
 }
 
 void BuildStatus::BuildEdgeStarted(Edge* edge) {
-  timeval now;
-  gettimeofday(&now, NULL);
-  running_edges_.insert(make_pair(edge, now));
+  running_edges_.insert(make_pair(edge, GetTimeMillis()));
 
   PrintStatus(edge);
 }
 
 int BuildStatus::BuildEdgeFinished(Edge* edge) {
-  timeval now;
-  gettimeofday(&now, NULL);
+  int64_t now = GetTimeMillis();
   ++finished_edges_;
 
   if (verbosity_ != BuildConfig::QUIET) {
@@ -72,18 +97,16 @@ int BuildStatus::BuildEdgeFinished(Edge* edge) {
       if (finished_edges_ == total_edges_)
         printf("\n");
     } else {
-      if (now.tv_sec - last_update_ > 5) {
+      if (now - last_update_millis_ > 5*1000) {
         printf("%.1f%% %d/%d\n", finished_edges_ * 100 / (float)total_edges_,
                finished_edges_, total_edges_);
-        last_update_ = now.tv_sec;
+        last_update_millis_ = now;
       }
     }
   }
 
   RunningEdgeMap::iterator i = running_edges_.find(edge);
-  timeval delta;
-  timersub(&now, &i->second, &delta);
-  int ms = (delta.tv_sec * 1000) + (delta.tv_usec / 1000);
+  int ms = (int)(now - i->second);
   running_edges_.erase(i);
 
   return ms;
@@ -102,12 +125,26 @@ void BuildStatus::PrintStatus(Edge* edge) {
     string to_print = edge->GetDescription();
     if (to_print.empty() || verbosity_ == BuildConfig::VERBOSE)
       to_print = edge->EvaluateCommand();
-
+#ifndef WIN32
     if (smart_terminal_) {
+      // Limit output to width of the terminal if provided so we don't cause
+      // line-wrapping.
+      winsize size;
+      if ((ioctl(0, TIOCGWINSZ, &size) == 0) && size.ws_col) {
+        const int kMargin = 15;  // Space for [xxx/yyy] and "...".
+        if (to_print.size() + kMargin > size.ws_col) {
+          int substr = std::min(to_print.size(),
+                                to_print.size() + kMargin - size.ws_col);
+          to_print = "..." + to_print.substr(substr);
+        }
+      }
+
       printf("\r[%d/%d] %s\e[K", finished_edges_, total_edges_,
              to_print.c_str());
       fflush(stdout);
-    } else {
+    } else
+#endif
+    {
       printf("%s\n", to_print.c_str());
     }
   }
@@ -234,20 +271,20 @@ void Plan::Dump() {
 }
 
 struct RealCommandRunner : public CommandRunner {
-  RealCommandRunner(int parallelism) : parallelism_(parallelism) {}
+  RealCommandRunner(const BuildConfig& config) : config_(config) {}
   virtual ~RealCommandRunner() {}
   virtual bool CanRunMore();
   virtual bool StartCommand(Edge* edge);
   virtual bool WaitForCommands();
   virtual Edge* NextFinishedCommand(bool* success);
 
-  int parallelism_;
+  const BuildConfig& config_;
   SubprocessSet subprocs_;
   map<Subprocess*, Edge*> subproc_to_edge_;
 };
 
 bool RealCommandRunner::CanRunMore() {
-  return ((int)subprocs_.running_.size()) < parallelism_;
+  return ((int)subprocs_.running_.size()) < config_.parallelism;
 }
 
 bool RealCommandRunner::StartCommand(Edge* edge) {
@@ -282,21 +319,28 @@ Edge* RealCommandRunner::NextFinishedCommand(bool* success) {
   Edge* edge = i->second;
   subproc_to_edge_.erase(i);
 
-  if (!*success ||
-      !subproc->stdout_.buf_.empty() ||
-      !subproc->stderr_.buf_.empty()) {
-    printf("\n%s%s\n", *success ? "" : "FAILED: ",
-           edge->EvaluateCommand().c_str());
-    if (!subproc->stdout_.buf_.empty())
-      printf("%s\n", subproc->stdout_.buf_.c_str());
-    if (!subproc->stderr_.buf_.empty())
-      printf("%s\n", subproc->stderr_.buf_.c_str());
+  string output = subproc->GetOutput();
+  if (!*success || !output.empty()) {
+    // Print the command that is spewing before printing its output.
+    // Print the full command when it failed, otherwise the short name if
+    // available.
+    string to_print = edge->GetDescription();
+    if (to_print.empty() ||
+        config_.verbosity == BuildConfig::VERBOSE ||
+        !*success) {
+      to_print = edge->EvaluateCommand();
+    }
+
+    printf("\n%s%s\n", *success ? "" : "FAILED: ", to_print.c_str());
+    if (!output.empty())
+      printf("%s\n", output.c_str());
   }
 
   delete subproc;
   return edge;
 }
 
+/// A CommandRunner that doesn't actually run the commands.
 struct DryRunCommandRunner : public CommandRunner {
   virtual ~DryRunCommandRunner() {}
   virtual bool CanRunMore() {
@@ -327,7 +371,7 @@ Builder::Builder(State* state, const BuildConfig& config)
   if (config.dry_run)
     command_runner_ = new DryRunCommandRunner;
   else
-    command_runner_ = new RealCommandRunner(config.parallelism);
+    command_runner_ = new RealCommandRunner(config);
   status_ = new BuildStatus;
   status_->verbosity_ = config.verbosity;
   log_ = state->build_log_;
@@ -339,17 +383,24 @@ Node* Builder::AddTarget(const string& name, string* err) {
     *err = "unknown target: '" + name + "'";
     return NULL;
   }
+  if (!AddTarget(node, err))
+    return NULL;
+  return node;
+}
+
+bool Builder::AddTarget(Node* node, string* err) {
   node->file_->StatIfNecessary(disk_interface_);
   if (node->in_edge_) {
     if (!node->in_edge_->RecomputeDirty(state_, disk_interface_, err))
-      return NULL;
+      return false;
   }
   if (!node->dirty_)
-    return NULL;  // Intentionally no error.
+    return false;  // Intentionally no error.
 
   if (!plan_.AddTarget(node, err))
-    return NULL;
-  return node;
+    return false;
+
+  return true;
 }
 
 bool Builder::Build(string* err) {

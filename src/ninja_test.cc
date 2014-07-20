@@ -17,25 +17,9 @@
 #include <gtest/gtest.h>
 
 #include "build.h"
+#include "graph.h"
 #include "parsers.h"
 #include "test.h"
-
-void AssertParse(State* state, const char* input) {
-  ManifestParser parser(state, NULL);
-  string err;
-  ASSERT_TRUE(parser.Parse(input, &err)) << err;
-  ASSERT_EQ("", err);
-}
-
-StateTestWithBuiltinRules::StateTestWithBuiltinRules() {
-  AssertParse(&state_,
-"rule cat\n"
-"  command = cat $in > $out\n");
-}
-
-Node* StateTestWithBuiltinRules::GetNode(const string& path) {
-  return state_.GetNode(path);
-}
 
 TEST(State, Basic) {
   State state;
@@ -80,11 +64,32 @@ TEST(EvalString, OneVariable) {
   env.vars["var"] = "there";
   EXPECT_EQ("hi there", str.Evaluate(&env));
 }
+TEST(EvalString, OneVariableUpperCase) {
+  EvalString str;
+  string err;
+  EXPECT_TRUE(str.Parse("hi $VaR", &err));
+  EXPECT_EQ("", err);
+  EXPECT_EQ("hi $VaR", str.unparsed());
+  TestEnv env;
+  EXPECT_EQ("hi ", str.Evaluate(&env));
+  env.vars["VaR"] = "there";
+  EXPECT_EQ("hi there", str.Evaluate(&env));
+}
 TEST(EvalString, Error) {
   EvalString str;
   string err;
-  EXPECT_FALSE(str.Parse("bad $", &err));
+  size_t err_index;
+  EXPECT_FALSE(str.Parse("bad $", &err, &err_index));
   EXPECT_EQ("expected variable after $", err);
+  EXPECT_EQ(5, err_index);
+}
+TEST(EvalString, CurlyError) {
+  EvalString str;
+  string err;
+  size_t err_index;
+  EXPECT_FALSE(str.Parse("bad ${bar", &err, &err_index));
+  EXPECT_EQ("expected closing curly after ${", err);
+  EXPECT_EQ(9, err_index);
 }
 TEST(EvalString, Curlies) {
   EvalString str;
@@ -108,6 +113,10 @@ struct StatTest : public StateTestWithBuiltinRules,
   virtual string ReadFile(const string& path, string* err) {
     assert(false);
     return "";
+  }
+  virtual int RemoveFile(const string& path) {
+    assert(false);
+    return 0;
   }
 
   map<string, time_t> mtimes_;
@@ -197,6 +206,11 @@ public:
     ASSERT_TRUE(getcwd(buf, sizeof(buf)));
     start_dir_ = buf;
 
+    const char* tempdir = getenv("TMPDIR");
+    if (!tempdir)
+      tempdir = "/tmp";
+    ASSERT_EQ(0, chdir(tempdir));
+
     char name_template[] = "DiskInterfaceTest-XXXXXX";
     char* name = mkdtemp(name_template);
     temp_dir_name_ = name;
@@ -241,4 +255,14 @@ TEST_F(DiskInterfaceTest, ReadFile) {
 
 TEST_F(DiskInterfaceTest, MakeDirs) {
   EXPECT_TRUE(disk_.MakeDirs("path/with/double//slash/"));
+}
+
+TEST_F(DiskInterfaceTest, RemoveFile) {
+  const char* kFileName = "file-to-remove";
+  string cmd = "touch ";
+  cmd += kFileName;
+  ASSERT_EQ(0, system(cmd.c_str()));
+  EXPECT_EQ(0, disk_.RemoveFile(kFileName));
+  EXPECT_EQ(1, disk_.RemoveFile(kFileName));
+  EXPECT_EQ(1, disk_.RemoveFile("does not exist"));
 }

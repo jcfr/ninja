@@ -14,8 +14,10 @@
 
 #include "build.h"
 
+#include "graph.h"
 #include "test.h"
 
+/// Fixture for tests involving Plan.
 // Though Plan doesn't use State, it's useful to have one around
 // to create Nodes and Edges.
 struct PlanTest : public StateTestWithBuiltinRules {
@@ -187,42 +189,6 @@ TEST_F(PlanTest, DependencyCycle) {
   ASSERT_EQ("dependency cycle: out -> mid -> in -> pre -> out", err);
 }
 
-struct VirtualFileSystem : public DiskInterface {
-  struct Entry {
-    int mtime;
-    string contents;
-  };
-
-  void Create(const string& path, int time, const string& contents) {
-    files_[path].mtime = time;
-    files_[path].contents = contents;
-  }
-
-  // DiskInterface
-  virtual int Stat(const string& path) {
-    FileMap::iterator i = files_.find(path);
-    if (i != files_.end())
-      return i->second.mtime;
-    return 0;
-  }
-  virtual bool MakeDir(const string& path) {
-    directories_made_.push_back(path);
-    return true;  // success
-  }
-  virtual string ReadFile(const string& path, string* err) {
-    files_read_.push_back(path);
-    FileMap::iterator i = files_.find(path);
-    if (i != files_.end())
-      return i->second.contents;
-    return "";
-  }
-
-  vector<string> directories_made_;
-  vector<string> files_read_;
-  typedef map<string, Entry> FileMap;
-  FileMap files_;
-};
-
 struct BuildTest : public StateTestWithBuiltinRules,
                    public CommandRunner {
   BuildTest() : config_(MakeConfig()), builder_(&state_, config_), now_(1),
@@ -297,6 +263,7 @@ bool BuildTest::StartCommand(Edge* edge) {
 }
 
 bool BuildTest::WaitForCommands() {
+  assert(last_command_);
   return true;
 }
 
@@ -351,8 +318,13 @@ TEST_F(BuildTest, TwoStep) {
   EXPECT_TRUE(builder_.Build(&err));
   EXPECT_EQ("", err);
   ASSERT_EQ(3, commands_ran_.size());
-  EXPECT_EQ("cat in1 > cat1", commands_ran_[0]);
-  EXPECT_EQ("cat in1 in2 > cat2", commands_ran_[1]);
+  // Depending on how the pointers work out, we could've ran
+  // the first two commands in either order.
+  EXPECT_TRUE((commands_ran_[0] == "cat in1 > cat1" &&
+               commands_ran_[1] == "cat in1 in2 > cat2") ||
+              (commands_ran_[1] == "cat in1 > cat1" &&
+               commands_ran_[0] == "cat in1 in2 > cat2"));
+
   EXPECT_EQ("cat cat1 cat2 > cat12", commands_ran_[2]);
 
   // Modifying in2 requires rebuilding one intermediate file

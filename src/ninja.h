@@ -35,32 +35,54 @@ struct Rule;
 
 int ReadFile(const string& path, string* contents, string* err);
 
+/// Interface for accessing the disk.
+///
+/// Abstract so it can be mocked out for tests.  The real implementation
+/// is RealDiskInterface.
 struct DiskInterface {
-  // stat() a file, returning the mtime, or 0 if missing and -1 on other errors.
-  virtual int Stat(const string& path) = 0;
-  // Create a directory, returning false on failure.
-  virtual bool MakeDir(const string& path) = 0;
-  // Read a file to a string.  Fill in |err| on error.
-  virtual string ReadFile(const string& path, string* err) = 0;
+  virtual ~DiskInterface() {}
 
-  // Create all the parent directories for path; like mkdir -p `basename path`.
+  /// stat() a file, returning the mtime, or 0 if missing and -1 on
+  /// other errors.
+  virtual int Stat(const string& path) = 0;
+  /// Create a directory, returning false on failure.
+  virtual bool MakeDir(const string& path) = 0;
+  /// Read a file to a string.  Fill in |err| on error.
+  virtual string ReadFile(const string& path, string* err) = 0;
+  /// Remove the file named @a path. It behaves like 'rm -f path' so no errors
+  /// are reported if it does not exists.
+  /// @returns 0 if the file has been removed,
+  ///          1 if the file does not exist, and
+  ///          -1 if an error occurs.
+  virtual int RemoveFile(const string& path) = 0;
+
+  /// Create all the parent directories for path; like mkdir -p
+  /// `basename path`.
   bool MakeDirs(const string& path);
 };
 
+/// Implementation of DiskInterface that actually hits the disk.
 struct RealDiskInterface : public DiskInterface {
+  virtual ~RealDiskInterface() {}
   virtual int Stat(const string& path);
   virtual bool MakeDir(const string& path);
   virtual string ReadFile(const string& path, string* err);
+  virtual int RemoveFile(const string& path);
 };
 
+/// Mapping of path -> FileStat.
 struct StatCache {
   typedef hash_map<string, FileStat*> Paths;
   Paths paths_;
+
   FileStat* GetFile(const string& path);
+
+  /// Dump the mapping to stdout (useful for debugging).
   void Dump();
   void Reload();
 };
 
+/// Global state (file status, loaded rules) for a single run.
 struct State {
   State();
 
@@ -73,9 +95,14 @@ struct State {
   Node* LookupNode(const string& path);
   void AddIn(Edge* edge, const string& path);
   void AddOut(Edge* edge, const string& path);
+  /// @return the root node(s) of the graph. (Root nodes have no output edges).
+  /// @param error where to write the error message if somethings went wrong.
+  vector<Node*> RootNodes(string* error);
 
   StatCache stat_cache_;
+  /// All the rules used in the graph.
   map<string, const Rule*> rules_;
+  /// All the edges of the graph.
   vector<Edge*> edges_;
   BindingEnv bindings_;
   struct BuildLog* build_log_;

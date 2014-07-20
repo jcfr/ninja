@@ -24,6 +24,7 @@
 
 #include "build_log.h"
 #include "graph.h"
+#include "util.h"
 
 int ReadFile(const string& path, string* contents, string* err) {
   FILE* f = fopen(path.c_str(), "r");
@@ -53,7 +54,7 @@ int RealDiskInterface::Stat(const string& path) {
     if (errno == ENOENT) {
       return 0;
     } else {
-      fprintf(stderr, "stat(%s): %s\n", path.c_str(), strerror(errno));
+      Error("stat(%s): %s", path.c_str(), strerror(errno));
       return -1;
     }
   }
@@ -99,11 +100,25 @@ string RealDiskInterface::ReadFile(const string& path, string* err) {
 }
 
 bool RealDiskInterface::MakeDir(const string& path) {
-  if (mkdir(path.c_str(), 0777) < 0) {
-    fprintf(stderr, "mkdir(%s): %s\n", path.c_str(), strerror(errno));
+  if (::MakeDir(path) < 0) {
+    Error("mkdir(%s): %s", path.c_str(), strerror(errno));
     return false;
   }
   return true;
+}
+
+int RealDiskInterface::RemoveFile(const string& path) {
+  if (remove(path.c_str()) < 0) {
+    switch (errno) {
+      case ENOENT:
+        return 1;
+      default:
+        Error("remove(%s): %s", path.c_str(), strerror(errno));
+        return -1;
+    }
+  } else {
+    return 0;
+  }
 }
 
 FileStat* StatCache::GetFile(const string& path) {
@@ -114,8 +129,6 @@ FileStat* StatCache::GetFile(const string& path) {
   paths_[path] = file;
   return file;
 }
-
-#include <stdio.h>
 
 void StatCache::Dump() {
   for (Paths::iterator i = paths_.begin(); i != paths_.end(); ++i) {
@@ -178,8 +191,26 @@ void State::AddOut(Edge* edge, const string& path) {
   Node* node = GetNode(path);
   edge->outputs_.push_back(node);
   if (node->in_edge_) {
-    fprintf(stderr, "WARNING: multiple rules generate %s. "
-            "build will not be correct; continuing anyway\n", path.c_str());
+    Warning("multiple rules generate %s. "
+            "build will not be correct; continuing anyway", path.c_str());
   }
   node->in_edge_ = edge;
+}
+
+vector<Node*> State::RootNodes(string* err) {
+  vector<Node*> root_nodes;
+  // Search for nodes with no output.
+  for (vector<Edge*>::iterator e = edges_.begin(); e != edges_.end(); ++e) {
+    for (vector<Node*>::iterator out = (*e)->outputs_.begin();
+         out != (*e)->outputs_.end(); ++out) {
+      if ((*out)->out_edges_.empty())
+        root_nodes.push_back(*out);
+    }
+  }
+
+  if (!edges_.empty() && root_nodes.empty())
+    *err = "could not determine root nodes of build graph";
+
+  assert(edges_.empty() || !root_nodes.empty());
+  return root_nodes;
 }
