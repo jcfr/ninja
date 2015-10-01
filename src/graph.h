@@ -250,6 +250,17 @@ struct ImplicitDepLoader: private DepLoader {
   DepsLog* deps_log_;
 };
 
+/// Store dynamically-discovered dependency information for one edge.
+struct Dyndeps {
+  Dyndeps(): restat_(false) {}
+  bool restat_;
+  vector<Node*> implicit_inputs_;
+  vector<Node*> implicit_outputs_;
+};
+
+/// Store data loaded from one dyndep file.  Map from an edge
+/// to its dynamically-discovered dependency information.
+struct DyndepFile: public map<Edge*, Dyndeps> {};
 
 /// DependencyScan manages the process of scanning the files in a graph
 /// and updating the dirty/outputs_ready state of all the nodes and edges.
