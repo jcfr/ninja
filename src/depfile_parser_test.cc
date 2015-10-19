@@ -119,9 +119,9 @@ TEST_F(DepfileParserTest, SpecialChars) {
   // https://github.com/google/libcxx/tree/master/test/iterators/stream.iterators/istreambuf.iterator/
   string err;
   EXPECT_TRUE(Parse(
-"C:/Program\\ Files\\ (x86)/Microsoft\\ crtdefs.h: \n"
-" en@quot.header~ t+t-x!=1 \n"
-" openldap/slapd.d/cn=config/cn=schema/cn={0}core.ldif\n"
+"C:/Program\\ Files\\ (x86)/Microsoft\\ crtdefs.h: \\\n"
+" en@quot.header~ t+t-x!=1 \\\n"
+" openldap/slapd.d/cn=config/cn=schema/cn={0}core.ldif \\\n"
 " Fu\303\244ball",
       &err));
   ASSERT_EQ("", err);
