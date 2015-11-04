@@ -22,6 +22,7 @@
 #include "depfile_parser.h"
 #include "deps_log.h"
 #include "disk_interface.h"
+#include "dyndep_parser.h"
 #include "manifest_parser.h"
 #include "metrics.h"
 #include "state.h"
@@ -274,6 +275,82 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
   }
 
   return false;
+}
+
+bool DependencyScan::LoadDyndeps(Node* node, DyndepFile* ddf,
+                                 string* err) const {
+  // We are loading the dyndep file now so it is no longer pending.
+  node->set_dyndep_pending(false);
+
+  // Load the dyndep information from the file.
+  EXPLAIN("loading dyndep file '%s'", node->path().c_str());
+  if (!dyndep_loader_.LoadDyndepFile(node, ddf, err))
+    return false;
+
+  // Update each edge that specified this node as its dyndep binding.
+  vector<Edge*> const& out_edges = node->out_edges();
+  for (vector<Edge*>::const_iterator oe = out_edges.begin();
+       oe != out_edges.end(); ++oe) {
+    Edge* const edge = *oe;
+    if (edge->dyndep_ != node)
+      continue;
+
+    DyndepFile::iterator ddi = ddf->find(edge);
+    if (ddi == ddf->end()) {
+      *err = ("'" + edge->outputs_[0]->path() + "' "
+              "not mentioned in its dyndep file "
+              "'" + node->path() + "'");
+      return false;
+    }
+
+    ddi->second.used_ = true;
+    Dyndeps const& dyndeps = ddi->second;
+    UpdateEdge(edge, &dyndeps);
+  }
+
+  // Reject extra outputs in dyndep file.
+  for (DyndepFile::const_iterator oe = ddf->begin(); oe != ddf->end();
+       ++oe) {
+    if (!oe->second.used_) {
+      Edge* const edge = oe->first;
+      *err = ("dyndep file '" + node->path() + "' mentions output "
+              "'" + edge->outputs_[0]->path() + "' whose build statement "
+              "does not have a dyndep binding for the file");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void DependencyScan::UpdateEdge(Edge* edge, Dyndeps const* dyndeps) const {
+  // Add dyndep-discovered bindings to the edge.
+  // We know the edge already has its own binding
+  // scope because it has a "dyndep" binding.
+  if (dyndeps->restat_)
+    edge->env_->AddBinding("restat", "1");
+
+  // Add the dyndep-discovered outputs to the edge.
+  edge->outputs_.insert(edge->outputs_.end(),
+                        dyndeps->implicit_outputs_.begin(),
+                        dyndeps->implicit_outputs_.end());
+  edge->implicit_outs_ += dyndeps->implicit_outputs_.size();
+
+  // Add this edge as incoming to each new output.
+  for (vector<Node*>::const_iterator i = dyndeps->implicit_outputs_.begin();
+       i != dyndeps->implicit_outputs_.end(); ++i)
+    (*i)->set_in_edge(edge);
+
+  // Add the dyndep-discovered inputs to the edge.
+  edge->inputs_.insert(edge->inputs_.end() - edge->order_only_deps_,
+                       dyndeps->implicit_inputs_.begin(),
+                       dyndeps->implicit_inputs_.end());
+  edge->implicit_deps_ += dyndeps->implicit_inputs_.size();
+
+  // Add this edge as outgoing from each new input.
+  for (vector<Node*>::const_iterator i = dyndeps->implicit_inputs_.begin();
+       i != dyndeps->implicit_inputs_.end(); ++i)
+    (*i)->AddOutEdge(edge);
 }
 
 bool Edge::AllInputsReady() const {
@@ -595,4 +672,10 @@ void DepLoader::CreatePhonyInEdge(Node* node) {
   // to avoid a potential stuck build.  If we do call RecomputeDirty for
   // this node, it will simply set outputs_ready_ to the correct value.
   phony_edge->outputs_ready_ = true;
+}
+
+bool DyndepLoader::LoadDyndepFile(Node* file, DyndepFile* ddf,
+                                  string* err) const {
+  DyndepParser parser(state_, disk_interface_, ddf);
+  return parser.Load(file->path(), err);
 }

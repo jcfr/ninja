@@ -263,7 +263,8 @@ struct ImplicitDepLoader: private DepLoader {
 
 /// Store dynamically-discovered dependency information for one edge.
 struct Dyndeps {
-  Dyndeps(): restat_(false) {}
+  Dyndeps(): used_(false), restat_(false) {}
+  bool used_;
   bool restat_;
   vector<Node*> implicit_inputs_;
   vector<Node*> implicit_outputs_;
@@ -273,6 +274,18 @@ struct Dyndeps {
 /// to its dynamically-discovered dependency information.
 struct DyndepFile: public map<Edge*, Dyndeps> {};
 
+/// DyndepLoader loads dynamically discovered dependencies, as
+/// referenced via the "dyndep" attribute in build files.
+struct DyndepLoader: private DepLoader {
+  DyndepLoader(State* state, DiskInterface* disk_interface)
+      : DepLoader(state), disk_interface_(disk_interface) {}
+
+  bool LoadDyndepFile(Node* file, DyndepFile* ddf, string* err) const;
+
+ private:
+  DiskInterface* disk_interface_;
+};
+
 /// DependencyScan manages the process of scanning the files in a graph
 /// and updating the dirty/outputs_ready state of all the nodes and edges.
 struct DependencyScan {
@@ -280,7 +293,8 @@ struct DependencyScan {
                  DiskInterface* disk_interface)
       : build_log_(build_log),
         disk_interface_(disk_interface),
-        dep_loader_(state, deps_log, disk_interface) {}
+        dep_loader_(state, deps_log, disk_interface),
+        dyndep_loader_(state, disk_interface) {}
 
   /// Update the |dirty_| state of the given node by inspecting its input edge.
   /// Examine inputs, outputs, and command lines to judge whether an edge
@@ -305,6 +319,8 @@ struct DependencyScan {
     return dep_loader_.deps_log();
   }
 
+  bool LoadDyndeps(Node* node, DyndepFile* ddf, string* err) const;
+
  private:
   bool RecomputeDirty(Node* node, vector<Node*>* stack, string* err);
   bool VerifyDAG(Node* node, vector<Node*>* stack, string* err);
@@ -314,9 +330,12 @@ struct DependencyScan {
   bool RecomputeOutputDirty(Edge* edge, Node* most_recent_input,
                             const string& command, Node* output);
 
+  void UpdateEdge(Edge* edge, Dyndeps const* dyndeps) const;
+
   BuildLog* build_log_;
   DiskInterface* disk_interface_;
   ImplicitDepLoader dep_loader_;
+  DyndepLoader dyndep_loader_;
 };
 
 #endif  // NINJA_GRAPH_H_
