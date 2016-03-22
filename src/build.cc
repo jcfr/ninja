@@ -39,6 +39,7 @@
 #include "graph.h"
 #include "state.h"
 #include "subprocess.h"
+#include "tokenpool.h"
 #include "util.h"
 
 namespace {
@@ -360,7 +361,7 @@ bool Plan::AddSubTarget(Node* node, Node* dependent, string* err) {
 }
 
 Edge* Plan::FindWork() {
-  if (ready_.empty())
+  if (!more_ready())
     return NULL;
   set<Edge*>::iterator e = ready_.begin();
   Edge* edge = *e;
@@ -505,8 +506,8 @@ void Plan::Dump() {
 }
 
 struct RealCommandRunner : public CommandRunner {
-  explicit RealCommandRunner(const BuildConfig& config) : config_(config) {}
-  virtual ~RealCommandRunner() {}
+  explicit RealCommandRunner(const BuildConfig& config);
+  virtual ~RealCommandRunner();
   virtual bool CanRunMore();
   virtual bool StartCommand(Edge* edge);
   virtual bool WaitForCommand(Result* result);
@@ -515,8 +516,17 @@ struct RealCommandRunner : public CommandRunner {
 
   const BuildConfig& config_;
   SubprocessSet subprocs_;
+  TokenPool *tokens_;
   map<Subprocess*, Edge*> subproc_to_edge_;
 };
+
+RealCommandRunner::RealCommandRunner(const BuildConfig& config) : config_(config) {
+  tokens_ = TokenPool::Get();
+}
+
+RealCommandRunner::~RealCommandRunner() {
+  delete tokens_;
+}
 
 vector<Edge*> RealCommandRunner::GetActiveEdges() {
   vector<Edge*> edges;
@@ -528,14 +538,18 @@ vector<Edge*> RealCommandRunner::GetActiveEdges() {
 
 void RealCommandRunner::Abort() {
   subprocs_.Clear();
+  if (tokens_)
+    tokens_->Clear();
 }
 
 bool RealCommandRunner::CanRunMore() {
   size_t subproc_number =
       subprocs_.running_.size() + subprocs_.finished_.size();
   return (int)subproc_number < config_.parallelism
-    && ((subprocs_.running_.empty() || config_.max_load_average <= 0.0f)
-        || GetLoadAverage() < config_.max_load_average);
+    && (subprocs_.running_.empty() ||
+        ((config_.max_load_average <= 0.0f ||
+          GetLoadAverage() < config_.max_load_average)
+      && (!tokens_ || tokens_->Acquire())));
 }
 
 bool RealCommandRunner::StartCommand(Edge* edge) {
@@ -543,6 +557,8 @@ bool RealCommandRunner::StartCommand(Edge* edge) {
   Subprocess* subproc = subprocs_.Add(command, edge->use_console());
   if (!subproc)
     return false;
+  if (tokens_)
+    tokens_->Reserve();
   subproc_to_edge_.insert(make_pair(subproc, edge));
 
   return true;
@@ -555,6 +571,9 @@ bool RealCommandRunner::WaitForCommand(Result* result) {
     if (interrupted)
       return false;
   }
+
+  if (tokens_)
+    tokens_->Release();
 
   result->status = subproc->Finish();
   result->output = subproc->GetOutput();
@@ -664,23 +683,23 @@ bool Builder::Build(string* err) {
   // Second, we attempt to wait for / reap the next finished command.
   while (plan_.more_to_do()) {
     // See if we can start any more commands.
-    if (failures_allowed && command_runner_->CanRunMore()) {
-      if (Edge* edge = plan_.FindWork()) {
-        if (!StartEdge(edge, err)) {
-          Cleanup();
-          status_->BuildFinished();
-          return false;
-        }
-
-        if (edge->is_phony()) {
-          plan_.EdgeFinished(edge, Plan::kEdgeSucceeded);
-        } else {
-          ++pending_commands;
-        }
-
-        // We made some progress; go back to the main loop.
-        continue;
+    if (failures_allowed && plan_.more_ready() &&
+        command_runner_->CanRunMore()) {
+      Edge* edge = plan_.FindWork();
+      if (!StartEdge(edge, err)) {
+        Cleanup();
+        status_->BuildFinished();
+        return false;
       }
+
+      if (edge->is_phony()) {
+        plan_.EdgeFinished(edge, Plan::kEdgeSucceeded);
+      } else {
+        ++pending_commands;
+      }
+
+      // We made some progress; go back to the main loop.
+      continue;
     }
 
     // See if we can reap any finished commands.

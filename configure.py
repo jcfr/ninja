@@ -503,6 +503,7 @@ for name in ['build',
     objs += cxx(name)
 if platform.is_windows():
     for name in ['subprocess-win32',
+                 'tokenpool-none',
                  'includes_normalize-win32',
                  'msvc_helper-win32',
                  'msvc_helper_main-win32']:
@@ -512,6 +513,7 @@ if platform.is_windows():
     objs += cc('getopt')
 else:
     objs += cxx('subprocess-posix')
+    objs += cxx('tokenpool-gnu-make')
 if platform.is_aix():
     objs += cc('getopt')
 if platform.is_msvc():
