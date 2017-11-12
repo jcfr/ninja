@@ -1123,6 +1123,7 @@ int ReadFlags(int* argc, char*** argv,
         if (*end != 0 || value <= 0)
           Fatal("invalid -j parameter");
         config->parallelism = value;
+        config->parallelism_from_cmdline = true;
         break;
       }
       case 'k': {
