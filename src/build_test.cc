@@ -471,8 +471,9 @@ struct FakeCommandRunner : public CommandRunner {
 
   // CommandRunner impl
   virtual bool CanRunMore();
+  virtual bool AcquireToken();
   virtual bool StartCommand(Edge* edge);
-  virtual bool WaitForCommand(Result* result);
+  virtual bool WaitForCommand(Result* result, bool more_ready);
   virtual vector<Edge*> GetActiveEdges();
   virtual void Abort();
 
@@ -573,6 +574,10 @@ bool FakeCommandRunner::CanRunMore() {
   return active_edges_.size() < max_active_edges_;
 }
 
+bool FakeCommandRunner::AcquireToken() {
+  return true;
+}
+
 bool FakeCommandRunner::StartCommand(Edge* edge) {
   assert(active_edges_.size() < max_active_edges_);
   assert(find(active_edges_.begin(), active_edges_.end(), edge)
@@ -615,7 +620,7 @@ bool FakeCommandRunner::StartCommand(Edge* edge) {
   return true;
 }
 
-bool FakeCommandRunner::WaitForCommand(Result* result) {
+bool FakeCommandRunner::WaitForCommand(Result* result, bool more_ready) {
   if (active_edges_.empty())
     return false;
 
