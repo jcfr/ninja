@@ -1,4 +1,4 @@
-// Copyright 2011 Google Inc. All Rights Reserved.
+// Copyright 2016-2018 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NINJA_EXIT_STATUS_H_
-#define NINJA_EXIT_STATUS_H_
+#include "tokenpool.h"
 
-enum ExitStatus {
-  ExitSuccess,
-  ExitFailure,
-  ExitTokenAvailable,
-  ExitInterrupted,
-};
+#include <stdlib.h>
 
-#endif  // NINJA_EXIT_STATUS_H_
+// No-op TokenPool implementation
+struct TokenPool *TokenPool::Get(bool ignore,
+                                 bool verbose,
+                                 double& max_load_average) {
+  return NULL;
+}

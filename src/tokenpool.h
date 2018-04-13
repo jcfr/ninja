@@ -1,4 +1,4 @@
-// Copyright 2011 Google Inc. All Rights Reserved.
+// Copyright 2016-2017 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,14 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NINJA_EXIT_STATUS_H_
-#define NINJA_EXIT_STATUS_H_
+// interface to token pool
+struct TokenPool {
+  virtual ~TokenPool() {}
 
-enum ExitStatus {
-  ExitSuccess,
-  ExitFailure,
-  ExitTokenAvailable,
-  ExitInterrupted,
+  virtual bool Acquire() = 0;
+  virtual void Reserve() = 0;
+  virtual void Release() = 0;
+  virtual void Clear() = 0;
+
+#ifdef _WIN32
+  // @TODO
+#else
+  virtual int GetMonitorFd() = 0;
+#endif
+
+  // returns NULL if token pool is not available
+  static struct TokenPool *Get(bool ignore,
+                               bool verbose,
+                               double& max_load_average);
 };
-
-#endif  // NINJA_EXIT_STATUS_H_
