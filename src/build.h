@@ -91,6 +91,9 @@ private:
     kWantToFinish
   };
 
+  void EdgeWanted(Edge* edge);
+  bool EdgeMaybeReady(map<Edge*, Want>::iterator want_e, string* err);
+
   /// Submits a ready edge as a candidate for execution.
   /// The edge may be delayed from running, for example if it's a member of a
   /// currently-full pool.
