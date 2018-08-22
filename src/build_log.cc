@@ -293,7 +293,13 @@ bool BuildLog::Load(const string& path, string* err) {
     if (!end)
       continue;
     *end = 0;
+#if defined(_MSC_VER) && _MSC_VER <= 1600
+    // Fix compilation using both "Microsoft Visual C++ Compiler for Python 2.7" or "Visual Studio 2010"
+    // See https://stackoverflow.com/questions/70013/how-to-detect-if-im-compiling-code-with-visual-studio-2008#70630
+    restat_mtime = atol(start);
+#else
     restat_mtime = strtoll(start, NULL, 10);
+#endif
     start = end + 1;
 
     end = (char*)memchr(start, kFieldSeparator, line_end - start);

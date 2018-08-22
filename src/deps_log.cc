@@ -123,6 +123,13 @@ bool DepsLog::RecordDeps(Node* node, TimeStamp mtime,
   if (!made_change)
     return true;
 
+#if defined(_MSC_VER) && _MSC_VER <= 1600
+  // Fix compilation using both "Microsoft Visual C++ Compiler for Python 2.7" or "Visual Studio 2010"
+  // See https://stackoverflow.com/questions/70013/how-to-detect-if-im-compiling-code-with-visual-studio-2008#70630
+  // See https://stackoverflow.com/questions/1747660/strange-stdvector-problem-with-uint32-t-on-visual-studio-2008#comment1629565_1747660
+  typedef unsigned __int32 uint32_t;
+#endif
+
   // Update on-disk representation.
   unsigned size = 4 * (1 + 2 + node_count);
   if (size > kMaxRecordSize) {
